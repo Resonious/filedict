@@ -29,9 +29,11 @@ int main() {
     filedict_insert(&filedict, "key2", "key2value13");
     filedict_insert(&filedict, "key2", "key2value14");
     filedict_insert(&filedict, "key2", "key2value15");
-    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it");
+    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it 1.");
     error_check();
-    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it");
+    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it 2.");
+    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it 3.");
+    filedict_insert(&filedict, "key2", "this is it, right? pushes you over the limit. the LIMIT. 限界オーバー！ IT IS OVER FOR YOU!!!!!.");
     error_check();
 
     filedict_insert(&filedict, "mykey", "myvalue2");

@@ -193,7 +193,7 @@ static void filedict_insert(filedict_t *filedict, const char *key, const char *v
                         candidate = &entry->value[value_i + 1];
                         candidate_len = FILEDICT_VALUE_SIZE - value_i;
 
-                        if (strlen(value) > candidate_len) break;
+                        if (strlen(value) >= candidate_len) break;
 
                         strncpy(candidate, value, candidate_len);
                         return;
