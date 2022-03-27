@@ -1,15 +1,22 @@
 #ifndef FILEDICT_H
 #define FILEDICT_H 1
 
+#ifndef FILEDICT_KEY_SIZE
 #define FILEDICT_KEY_SIZE 256
+#endif
+
+#ifndef FILEDICT_VALUE_SIZE
 #define FILEDICT_VALUE_SIZE 256
+#endif
 
 typedef struct filedict_bucket_entry_t {
     char key[FILEDICT_KEY_SIZE];
     char value[FILEDICT_VALUE_SIZE];
 } filedict_bucket_entry_t;
 
+#ifndef FILEDICT_BUCKET_ENTRY_COUNT
 #define FILEDICT_BUCKET_ENTRY_COUNT 4
+#endif
 
 typedef struct filedict_bucket_t {
     filedict_bucket_entry_t entries[FILEDICT_BUCKET_ENTRY_COUNT];
