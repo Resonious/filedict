@@ -221,6 +221,7 @@ try_again:
                                 /* Looks like this value already exists! */
                                 return;
                             }
+                            first_nonzero = -1;
                         }
                     }
 
