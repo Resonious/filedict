@@ -77,6 +77,22 @@ static size_t filedict_default_hash_function(const char *input) {
     return hash;
 }
 
+/*
+ * Writes at most max_len chars from src into dest.
+ * Returns the total number of bytes in src.
+ */
+static size_t filedict_copy_string(char *dest, const char *src, size_t max_len) {
+    size_t src_len = 0;
+    char c;
+
+    while (1) {
+        c = *src++;
+        if (src_len < max_len) { *dest++ = c; }
+        if (c == 0) return src_len;
+        src_len += 1;
+    }
+}
+
 static void filedict_init(filedict_t *filedict) {
     filedict->error = NULL;
     filedict->fd = 0;
@@ -169,10 +185,10 @@ try_again:
 
             /* Easy case: fresh entry. We can just insert here and call it quits. */
             if (entry->key[0] == 0) {
-                strncpy(entry->key, key, FILEDICT_KEY_SIZE);
-                char *copy_result = stpncpy(entry->value, value, FILEDICT_VALUE_SIZE);
+                filedict_copy_string(entry->key, key, FILEDICT_KEY_SIZE);
+                size_t value_len = filedict_copy_string(entry->value, value, FILEDICT_VALUE_SIZE);
 
-                if (copy_result >= &entry->value[FILEDICT_VALUE_SIZE]) {
+                if (value_len > FILEDICT_VALUE_SIZE) {
                     filedict->error = "Value too big";
                 }
                 return;
@@ -185,7 +201,120 @@ try_again:
                 for (value_i = 0; value_i < FILEDICT_VALUE_SIZE - 1; ++value_i) {
                     if (entry->value[value_i] == 0 && entry->value[value_i + 1] == 0) {
                         candidate = &entry->value[value_i + 1];
-                        candidate_len = FILEDICT_VALUE_SIZE - value_i;
+                        candidate_len = FILEDICT_VALUE_SIZE - value_i - 1;
+
+                        if (strlen(value) >= candidate_len) break;
+
+                        strncpy(candidate, value, candidate_len);
+                        return;
+                    }
+                }
+            }
+        }
+
+        ++hashmap_i;
+        hashmap += (bucket_count * sizeof(filedict_bucket_t));
+        bucket_count = (bucket_count << 1);
+    }
+
+    /*
+     * If we fell through to here, that means we need to allocate a new hashmap.
+     */
+    size_t new_hashmap_count = header->hashmap_count + 1;
+    size_t old_data_len = filedict->data_len;
+    size_t new_data_len = filedict_file_size(header->initial_bucket_count, new_hashmap_count);
+
+    assert(new_data_len > old_data_len);
+    assert((new_data_len - old_data_len) % header->initial_bucket_count == 0);
+
+    munmap(filedict->data, filedict->data_len);
+    int truncate_result = ftruncate(filedict->fd, new_data_len);
+    if (truncate_result != 0) { filedict->error = strerror(errno); return; }
+
+    filedict->data = mmap(
+        filedict->data,
+        new_data_len,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        filedict->fd,
+        0
+    );
+    if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return; }
+    header = (filedict_header_t *)filedict->data;
+    hashmap = filedict->data + old_data_len;
+
+    filedict->data_len = new_data_len;
+    header->hashmap_count = new_hashmap_count;
+    goto try_again;
+}
+
+/*
+ * Same as filedict_insert (copy/pasta..) except only inserts if the value isn't already
+ * present.
+ */
+static void filedict_insert_unique(filedict_t *filedict, const char *key, const char *value) {
+    assert(filedict->fd != 0);
+    assert(filedict->data != NULL);
+
+    size_t i, hashmap_i = 0, bucket_count, key_hash;
+    filedict_header_t *header = (filedict_header_t *)filedict->data;
+    filedict_bucket_t *hashmap = filedict->data + sizeof(filedict_header_t);
+    filedict_bucket_t *bucket;
+
+    bucket_count = header->initial_bucket_count;
+
+    key_hash = filedict->hash_function(key);
+
+    /*
+     * Here we loop through each hashmap.
+     */
+    while (hashmap_i < header->hashmap_count) {
+try_again:
+        /* TODO: can we truncate instead of modulo, like in Ruby? */
+        bucket = &hashmap[key_hash % bucket_count];
+
+        for (i = 0; i < FILEDICT_BUCKET_ENTRY_COUNT; ++i) {
+            filedict_bucket_entry_t *entry = &bucket->entries[i];
+
+            /* Easy case: fresh entry. We can just insert here and call it quits. */
+            if (entry->key[0] == 0) {
+                strncpy(entry->key, key, FILEDICT_KEY_SIZE);
+                size_t value_len = filedict_copy_string(entry->value, value, FILEDICT_VALUE_SIZE);
+
+                if (value_len > FILEDICT_VALUE_SIZE) {
+                    filedict->error = "Value too big";
+                }
+                return;
+            }
+            /*
+             * We need to check for room in the value, then append value.
+             * This is also where we might run into a duplicate and duck out.existing
+             */
+            else if (strncmp(entry->key, key, FILEDICT_KEY_SIZE) == 0) {
+                long long first_nonzero = -1;
+                char *candidate = NULL;
+                size_t value_i, candidate_len;
+
+                for (value_i = 0; value_i < FILEDICT_VALUE_SIZE - 1; ++value_i) {
+                    if (first_nonzero == -1 && entry->value[value_i] != 0) {
+                        first_nonzero = value_i;
+                    }
+
+                    if (entry->value[value_i] == 0) {
+                        int cmp = strncmp(
+                            &entry->value[first_nonzero],
+                            value,
+                            FILEDICT_VALUE_SIZE - first_nonzero
+                        );
+                        if (cmp == 0) {
+                            /* Looks like this value already exists! */
+                            return;
+                        }
+                    }
+
+                    if (entry->value[value_i] == 0 && entry->value[value_i + 1] == 0) {
+                        candidate = &entry->value[value_i + 1];
+                        candidate_len = FILEDICT_VALUE_SIZE - value_i - 1;
 
                         if (strlen(value) >= candidate_len) break;
 
@@ -235,7 +364,7 @@ try_again:
 /*
  * There are 3 "levels" to a filedict. From top to bottom:
  * 1. Hashmap - which hashmap are we looking at? We create additional hashmaps to handle overflow.
- * 2. Entry   - which entry in our hashmap bucket are we looking at? 
+ * 2. Entry   - which entry in our hashmap bucket are we looking at?
  * 3. Value   - where in the value buffer are we looking? There's 256 bytes, so can be many strings.
  */
 
