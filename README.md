@@ -4,15 +4,23 @@ This is a single-header C library that provides very simple file-backed key-valu
 
 Filedict does not allocate memory using `malloc` or similar; it only uses `open` and `mmap`. All values are `const char *` and live inside the file-backed memory.
 
+## Key features
+
+* Simple file-backed key-value store. (hashmap style. not a btree)
+* Great for when you need to save data but redis or sqlite is too much.
+* Doesn't allocate memory.
+* No dependencies other than the C standard library.
+* All in a single header - no need to mess with your linker or package manager.
+
 # What data does this store, exactly?
 
-String keys, and string values.
+String keys, each associated with one or more string values.
 
-Keys can have multiple values.
+All keys and all values are null-terminated C strings. Works fine with UTF-8 because it doesn't actually parse anything.
 
-More specifically, all keys and all values are null-terminated C strings. Works fine with UTF-8.
+There is a size limit! By default, keys and values have a maximum of 256 bytes. You can change this with `#define FILEDICT_KEY_SIZE 1024` and/or `#define FILEDICT_VALUE_SIZE 2048` if you'd like. But do note that this will make your data files much larger and more spacious unless you actually use most of the bytes for each key.
 
-There is a size limit! By default, keys and values have a maximum of 256 bytes. You can change this with `#define FILEDICT_KEY_SIZE 1024` or `#define FILEDICT_VALUE_SIZE 2048` if you'd like. But do note that this will make your files much larger and more spacious unless you actually use all of those bytes for most of your entries.
+Despite the size limit on individual keys and values, there is actually no limit on _how many_ values you can have under one key, or how many keys you can have. The store can grow indefinitely without any re-hashing. Also, storing many small values under the same key will stuff all of the values into the same entry until that entry runs out of space.
 
 # How to use
 
