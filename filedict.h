@@ -239,7 +239,7 @@ try_again:
         }
 
         ++hashmap_i;
-        hashmap += (bucket_count * sizeof(filedict_bucket_t));
+        hashmap += bucket_count;
         bucket_count = (bucket_count << 1);
     }
 
