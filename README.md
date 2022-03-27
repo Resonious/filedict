@@ -37,12 +37,13 @@ int main() {
 
     filedict_insert(&filedict, "my key", "my value");
 
+    filedict_read_t read = filedict_get(&filedict, "my key");
+    assert(strcmp(read.value, "my key") == 0);
+
     /* Because filedict lets you store multiple values under the same key, you
      * can use this "filedict_read_t" to get the rest of the values by calling
      * `filedict_get_next(&read)` until it returns 0.
      */
-    filedict_read_t read = filedict_get(&filedict, "my key");
-    assert(strcmp(read.value, "my key") == 0);
 
     /* This will unmap the memory and close the file. */
     filedict_deinit(&filedict);
