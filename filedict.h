@@ -147,9 +147,10 @@ static void filedict_insert(filedict_t *filedict, const char *key, const char *v
     assert(filedict->fd != 0);
     assert(filedict->data != NULL);
 
-    size_t i, hashmap_i, bucket_count, key_hash;
+    size_t i, hashmap_i = 0, bucket_count, key_hash;
     filedict_header_t *header = (filedict_header_t *)filedict->data;
-    filedict_bucket_t *hashmap;
+    filedict_bucket_t *hashmap = filedict->data + sizeof(filedict_header_t);
+    filedict_bucket_t *bucket;
 
     bucket_count = header->initial_bucket_count;
 
@@ -158,17 +159,10 @@ static void filedict_insert(filedict_t *filedict, const char *key, const char *v
     /*
      * Here we loop through each hashmap.
      */
-    for (hashmap_i = 0,
-        hashmap = filedict->data + sizeof(filedict_header_t);
-
-        hashmap_i < header->hashmap_count;
-
-        ++hashmap_i,
-        hashmap += (bucket_count * sizeof(filedict_bucket_t)),
-        bucket_count = (bucket_count << 1)
-    ) {
+    while (hashmap_i < header->hashmap_count) {
+try_again:
         /* TODO: can we truncate instead of modulo, like in Ruby? */
-        filedict_bucket_t *bucket = &hashmap[key_hash % bucket_count];
+        bucket = &hashmap[key_hash % bucket_count];
 
         for (i = 0; i < FILEDICT_BUCKET_ENTRY_COUNT; ++i) {
             filedict_bucket_entry_t *entry = &bucket->entries[i];
@@ -201,12 +195,41 @@ static void filedict_insert(filedict_t *filedict, const char *key, const char *v
                 }
             }
         }
+
+        ++hashmap_i;
+        hashmap += (bucket_count * sizeof(filedict_bucket_t));
+        bucket_count = (bucket_count << 1);
     }
 
     /*
-     * TODO: if we reach here, that means we need to allocate a new hashmap :'(
+     * If we fell through to here, that means we need to allocate a new hashmap.
      */
-    assert(0);
+    size_t new_hashmap_count = header->hashmap_count + 1;
+    size_t old_data_len = filedict->data_len;
+    size_t new_data_len = filedict_file_size(header->initial_bucket_count, new_hashmap_count);
+
+    assert(new_data_len > old_data_len);
+    assert((new_data_len - old_data_len) % header->initial_bucket_count == 0);
+
+    munmap(filedict->data, filedict->data_len);
+    int truncate_result = ftruncate(filedict->fd, new_data_len);
+    if (truncate_result != 0) { filedict->error = strerror(errno); return; }
+
+    filedict->data = mmap(
+        filedict->data,
+        new_data_len,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        filedict->fd,
+        0
+    );
+    if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return; }
+    header = (filedict_header_t *)filedict->data;
+    hashmap = filedict->data + old_data_len;
+
+    filedict->data_len = new_data_len;
+    header->hashmap_count = new_hashmap_count;
+    goto try_again;
 }
 
 /*
