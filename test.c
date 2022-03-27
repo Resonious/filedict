@@ -15,14 +15,23 @@ int main() {
     error_check();
 
     filedict_insert(&filedict, "key2", "key2value1");
-    error_check();
     filedict_insert(&filedict, "key2", "key2value2");
-    error_check();
     filedict_insert(&filedict, "key2", "key2value3");
-    error_check();
     filedict_insert(&filedict, "key2", "key2value4");
-    error_check();
     filedict_insert(&filedict, "key2", "key2value5");
+    filedict_insert(&filedict, "key2", "key2value6");
+    filedict_insert(&filedict, "key2", "key2value7");
+    filedict_insert(&filedict, "key2", "key2value8");
+    filedict_insert(&filedict, "key2", "key2value9");
+    filedict_insert(&filedict, "key2", "key2value10");
+    filedict_insert(&filedict, "key2", "key2value11");
+    filedict_insert(&filedict, "key2", "key2value12");
+    filedict_insert(&filedict, "key2", "key2value13");
+    filedict_insert(&filedict, "key2", "key2value14");
+    filedict_insert(&filedict, "key2", "key2value15");
+    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it");
+    error_check();
+    filedict_insert(&filedict, "key2", "here is a really long one. lets get crazy. push it to the limit. pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it pump it");
     error_check();
 
     filedict_insert(&filedict, "mykey", "myvalue2");
