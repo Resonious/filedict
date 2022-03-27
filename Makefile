@@ -1,2 +1,2 @@
-test: filedict.h filedict.c test.c
-	gcc -ggdb filedict.c test.c -o test
+test: filedict.h test.c
+	gcc -Wall -ggdb test.c -o test
