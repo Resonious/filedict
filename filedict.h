@@ -131,10 +131,22 @@ static size_t filedict_file_size(size_t initial_bucket_count, size_t hashmap_cou
 /*
  * This opens a new file for reading and writing, optionally letting you specify the initial bucket count.
  */
-#define filedict_open_new(filedict, filename) filedict_open_new_s(filedict, filename, 4096)
+#define filedict_open_new(filedict, filename) \
+    filedict_open_f(filedict, filename, O_CREAT | O_TRUNC | O_RDWR, 4096)
 
-static void filedict_open_new_s(filedict_t *filedict, const char *filename, unsigned int initial_bucket_count) {
-    filedict->fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0666);
+#define filedict_open_readonly(filedict, filename) \
+    filedict_open_f(filedict, filename, O_RDONLY, 4096)
+
+#define filedict_open(filedict, filename) \
+    filedict_open_f(filedict, filename, O_CREAT | O_RDWR, 4096)
+
+static void filedict_open_f(
+    filedict_t *filedict,
+    const char *filename,
+    int flags,
+    unsigned int initial_bucket_count
+) {
+    filedict->fd = open(filename, flags, 0666);
     if (filedict->fd == -1) { filedict->error = strerror(errno); return; }
 
     filedict->data_len = filedict_file_size(initial_bucket_count, 1);

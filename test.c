@@ -5,7 +5,7 @@
 
 #define breakpoint() raise(SIGTRAP)
 
-#define error_check() do { if (filedict.error) { printf("Error: %s\n", filedict.error); filedict_deinit(&filedict); return 1; } } while (0)
+#define error_check() do { if (filedict.error) { printf("Line %i error: %s\n", __LINE__, filedict.error); filedict_deinit(&filedict); return 1; } } while (0)
 
 int main() {
     filedict_t filedict;
@@ -49,6 +49,19 @@ int main() {
 
     filedict_read_t read = filedict_get(&filedict, "key2");
     int success = 1;
+
+    while (success) {
+        printf("Read %s\n", read.value);
+        success = filedict_get_next(&read);
+    }
+
+    filedict_deinit(&filedict);
+
+    printf("re-opening\n");
+    filedict_init(&filedict);
+    filedict_open(&filedict, "test.data");
+    read = filedict_get(&filedict, "key2");
+    success = 1;
 
     while (success) {
         printf("Read %s\n", read.value);
