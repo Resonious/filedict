@@ -38,7 +38,7 @@ typedef struct filedict_header_t {
 } __attribute__ ((__packed__)) filedict_header_t;
 
 typedef struct filedict_read_t {
-    const filedict_t *filedict;
+    filedict_t *filedict;
     const char *key;
     const char *value;
     filedict_bucket_t *bucket;
@@ -353,7 +353,7 @@ static int filedict_read_advance_entry(filedict_read_t *read) {
  * Returns 0 when there are no more hashmaps, or the latest hashmap has no matching entries.
  */
 static int filedict_read_advance_hashmap(filedict_read_t *read) {
-    const filedict_t *filedict = read->filedict;
+    filedict_t *filedict = read->filedict;
 
     assert(filedict);
     assert(filedict->data);
@@ -363,6 +363,24 @@ static int filedict_read_advance_hashmap(filedict_read_t *read) {
     if (read->hashmap_i >= header->hashmap_count) log_return(0);
 
     size_t offset = filedict_file_size(header->initial_bucket_count, read->hashmap_i);
+
+    if (offset >= filedict->data_len) {
+        /* Need to resize! */
+        size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
+        munmap(filedict->data, filedict->data_len);
+        filedict->data = mmap(
+            filedict->data,
+            computed_size,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED,
+            filedict->fd,
+            0
+        );
+        if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return 0; }
+        filedict->data_len = computed_size;
+        header = (filedict_header_t*)filedict->data;
+    }
+
     filedict_bucket_t *hashmap = filedict->data + offset;
 
     read->bucket_count = (size_t)header->initial_bucket_count << read->hashmap_i;
@@ -377,7 +395,7 @@ static int filedict_read_advance_hashmap(filedict_read_t *read) {
 /*
  * Returns a "read" at the given key. If there's a hit, <return>.value will have the value.
  */
-static filedict_read_t filedict_get(const filedict_t *filedict, const char *key) {
+static filedict_read_t filedict_get(filedict_t *filedict, const char *key) {
     filedict_read_t read;
     read.filedict = filedict;
     read.key = key;
