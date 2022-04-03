@@ -300,6 +300,7 @@ try_again:
 static void filedict_resize(filedict_t *filedict) {
     filedict_header_t *header = (filedict_header_t*)filedict->data;
     size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
+    if (computed_size <= filedict->data_len) return;
 
     munmap(filedict->data, filedict->data_len);
     filedict->data = mmap(
