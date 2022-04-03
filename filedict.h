@@ -154,7 +154,7 @@ static void filedict_open_f(
     filedict->data = mmap(
         NULL,
         filedict->data_len,
-        PROT_READ | PROT_WRITE,
+        PROT_READ | ((flags & O_RDWR) ? PROT_WRITE : 0),
         MAP_SHARED,
         filedict->fd,
         0
@@ -163,8 +163,11 @@ static void filedict_open_f(
 
     filedict_header_t *data = (filedict_header_t *)filedict->data;
     assert(initial_bucket_count <= UINT_MAX);
-    data->initial_bucket_count = initial_bucket_count;
-    data->hashmap_count = 1;
+
+    if (data->initial_bucket_count == 0) {
+        data->initial_bucket_count = initial_bucket_count;
+        data->hashmap_count = 1;
+    }
 }
 
 /*
