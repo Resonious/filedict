@@ -18,10 +18,13 @@ int main(int argc, const char **argv) {
     for (i = 1; i < argc; ++i, filedict_deinit(&filedict)) {
         long long zeros = 0;
         long long nonzeros = 0;
-        size_t b;
+        size_t j, k, bucket_count;
         filedict_header_t *header;
+        filedict_bucket_t *hashmap;
 
         filedict_open_readonly(&filedict, argv[i]);
+        error_check();
+        filedict_resize(&filedict);
         error_check();
 
         if (i > 1) printf("\n\n");
@@ -35,9 +38,9 @@ int main(int argc, const char **argv) {
          * Simple analysis of the number of zeros in the file
          */
         printf("\n");
-        for (b = 0; b < filedict.data_len; ++b) {
-            zeros += (((char *)filedict.data)[b] == 0);
-            nonzeros += (((char *)filedict.data)[b] != 0);
+        for (j = 0; j < filedict.data_len; ++j) {
+            zeros += (((char *)filedict.data)[j] == 0);
+            nonzeros += (((char *)filedict.data)[j] != 0);
         }
 
         printf("zeros:    %lli\n", zeros);
@@ -48,9 +51,31 @@ int main(int argc, const char **argv) {
          * Now let's look at actual hashmap info
          */
         header = (filedict_header_t *)filedict.data;
+        hashmap = (filedict_bucket_t*)(filedict.data + sizeof(filedict_header_t));
 
         printf("\n");
         printf("hashmap count: %i\n", header->hashmap_count);
+        printf("initial bucket count: %i\n", header->initial_bucket_count);
+
+        bucket_count = header->initial_bucket_count;
+
+        for (j = 0; j < header->hashmap_count; ++j) {
+            size_t used_buckets = 0;
+            size_t unused_buckets = 0;
+
+            for (k = 0; k < bucket_count; ++k) {
+                filedict_bucket_t *bucket = &hashmap[k];
+
+                used_buckets += (bucket->entries[0].key[0] != 0);
+                unused_buckets += (bucket->entries[0].key[0] == 0);
+            }
+            printf("\n");
+            printf("hashmap %li used buckets:   %li\n", j+1, used_buckets);
+            printf("hashmap %li unused buckets: %li\n", j+1, unused_buckets);
+
+            hashmap += bucket_count;
+            bucket_count = (bucket_count << 1);
+        }
     }
 
     filedict_deinit(&filedict);

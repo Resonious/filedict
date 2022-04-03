@@ -27,6 +27,7 @@ typedef size_t (*filedict_hash_function_t)(const char *);
 typedef struct filedict_t {
     const char *error;
     int fd;
+    int flags;
     void *data;
     size_t data_len;
     filedict_hash_function_t hash_function;
@@ -96,6 +97,7 @@ static size_t filedict_copy_string(char *dest, const char *src, size_t max_len) 
 static void filedict_init(filedict_t *filedict) {
     filedict->error = NULL;
     filedict->fd = 0;
+    filedict->flags = 0;
     filedict->data_len = 0;
     filedict->data = NULL;
     filedict->hash_function = filedict_default_hash_function;
@@ -110,6 +112,7 @@ static void filedict_deinit(filedict_t *filedict) {
     if (filedict->fd) {
         close(filedict->fd);
         filedict->fd = 0;
+        filedict->flags = 0;
     }
 }
 
@@ -146,6 +149,7 @@ static void filedict_open_f(
     int flags,
     unsigned int initial_bucket_count
 ) {
+    filedict->flags = flags;
     filedict->fd = open(filename, flags, 0666);
     if (filedict->fd == -1) { filedict->error = strerror(errno); return; }
 
@@ -275,7 +279,7 @@ try_again:
     filedict->data = mmap(
         filedict->data,
         new_data_len,
-        PROT_READ | PROT_WRITE,
+        PROT_READ | ((filedict->flags & O_RDWR) ? PROT_WRITE : 0),
         MAP_SHARED,
         filedict->fd,
         0
@@ -287,6 +291,27 @@ try_again:
     filedict->data_len = new_data_len;
     header->hashmap_count = new_hashmap_count;
     goto try_again;
+}
+
+/*
+ * Resizes the filedict based on the header hashmap count and initial bucket count.
+ * Naturally, your pointers into the map will become invalid after calling this.
+ */
+static void filedict_resize(filedict_t *filedict) {
+    filedict_header_t *header = (filedict_header_t*)filedict->data;
+    size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
+
+    munmap(filedict->data, filedict->data_len);
+    filedict->data = mmap(
+        filedict->data,
+        computed_size,
+        PROT_READ | ((filedict->flags & O_RDWR) ? PROT_WRITE : 0),
+        MAP_SHARED,
+        filedict->fd,
+        0
+    );
+    if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return; }
+    filedict->data_len = computed_size;
 }
 
 /*
@@ -368,19 +393,8 @@ static int filedict_read_advance_hashmap(filedict_read_t *read) {
     size_t offset = filedict_file_size(header->initial_bucket_count, read->hashmap_i);
 
     if (offset >= filedict->data_len) {
-        /* Need to resize! */
-        size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
-        munmap(filedict->data, filedict->data_len);
-        filedict->data = mmap(
-            filedict->data,
-            computed_size,
-            PROT_READ | PROT_WRITE,
-            MAP_SHARED,
-            filedict->fd,
-            0
-        );
-        if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return 0; }
-        filedict->data_len = computed_size;
+        filedict_resize(filedict);
+        if (filedict->error) log_return(0);
         header = (filedict_header_t*)filedict->data;
     }
 
