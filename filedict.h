@@ -132,6 +132,28 @@ static size_t filedict_file_size(size_t initial_bucket_count, size_t hashmap_cou
 }
 
 /*
+ * Resizes the filedict based on the header hashmap count and initial bucket count.
+ * Naturally, your pointers into the map will become invalid after calling this.
+ */
+static void filedict_resize(filedict_t *filedict) {
+    filedict_header_t *header = (filedict_header_t*)filedict->data;
+    size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
+    if (computed_size <= filedict->data_len) return;
+
+    munmap(filedict->data, filedict->data_len);
+    filedict->data = mmap(
+        filedict->data,
+        computed_size,
+        PROT_READ | ((filedict->flags & O_RDWR) ? PROT_WRITE : 0),
+        MAP_SHARED,
+        filedict->fd,
+        0
+    );
+    if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return; }
+    filedict->data_len = computed_size;
+}
+
+/*
  * This opens a new file for reading and writing, optionally letting you specify the initial bucket count.
  */
 #define filedict_open_new(filedict, filename) \
@@ -149,12 +171,20 @@ static void filedict_open_f(
     int flags,
     unsigned int initial_bucket_count
 ) {
+    struct stat info;
+
     filedict->flags = flags;
     filedict->fd = open(filename, flags, 0666);
     if (filedict->fd == -1) { filedict->error = strerror(errno); return; }
+    if (fstat(filedict->fd, &info) != 0) { filedict->error = strerror(errno); return; }
 
-    filedict->data_len = filedict_file_size(initial_bucket_count, 1);
-    ftruncate(filedict->fd, filedict->data_len);
+    if (info.st_size == 0 && (flags & O_RDWR)) {
+        filedict->data_len = filedict_file_size(initial_bucket_count, 1);
+        ftruncate(filedict->fd, filedict->data_len);
+    } else {
+        filedict->data_len = info.st_size;
+    }
+
     filedict->data = mmap(
         NULL,
         filedict->data_len,
@@ -291,28 +321,6 @@ try_again:
     filedict->data_len = new_data_len;
     header->hashmap_count = new_hashmap_count;
     goto try_again;
-}
-
-/*
- * Resizes the filedict based on the header hashmap count and initial bucket count.
- * Naturally, your pointers into the map will become invalid after calling this.
- */
-static void filedict_resize(filedict_t *filedict) {
-    filedict_header_t *header = (filedict_header_t*)filedict->data;
-    size_t computed_size = filedict_file_size(header->initial_bucket_count, header->hashmap_count);
-    if (computed_size <= filedict->data_len) return;
-
-    munmap(filedict->data, filedict->data_len);
-    filedict->data = mmap(
-        filedict->data,
-        computed_size,
-        PROT_READ | ((filedict->flags & O_RDWR) ? PROT_WRITE : 0),
-        MAP_SHARED,
-        filedict->fd,
-        0
-    );
-    if (filedict->data == MAP_FAILED) { filedict->error = strerror(errno); return; }
-    filedict->data_len = computed_size;
 }
 
 /*

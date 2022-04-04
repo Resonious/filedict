@@ -21,10 +21,9 @@ int main(int argc, const char **argv) {
         size_t j, k, bucket_count;
         filedict_header_t *header;
         filedict_bucket_t *hashmap;
+        const char *last_entry_key;
 
         filedict_open_readonly(&filedict, argv[i]);
-        error_check();
-        filedict_resize(&filedict);
         error_check();
 
         if (i > 1) printf("\n\n");
@@ -68,10 +67,15 @@ int main(int argc, const char **argv) {
 
                 used_buckets += (bucket->entries[0].key[0] != 0);
                 unused_buckets += (bucket->entries[0].key[0] == 0);
+
+                if (bucket->entries[0].key[0] != 0) {
+                    last_entry_key = bucket->entries[0].key;
+                }
             }
             printf("\n");
             printf("hashmap %li used buckets:   %li\n", j+1, used_buckets);
             printf("hashmap %li unused buckets: %li\n", j+1, unused_buckets);
+            printf("hashmap %li last key:       %s\n", j+1, last_entry_key);
 
             hashmap += bucket_count;
             bucket_count = (bucket_count << 1);
