@@ -120,15 +120,17 @@ static void filedict_deinit(filedict_t *filedict) {
  * This computes the size of the entire filedict file given an initial bucket count and hashmap count.
  */
 static size_t filedict_file_size(size_t initial_bucket_count, size_t hashmap_count) {
-    size_t result = sizeof(filedict_header_t);
-    size_t i;
-
-    for (i = 0; i < hashmap_count; ++i) {
-        /* Bucket count is multiplied by 2 for each additional hashmap. */
-        result += (initial_bucket_count << i) * sizeof(filedict_bucket_t);
-    }
-
-    return result;
+    /*
+     * We used to size each additional hashmap at 2x the previous, but realistically it seems that
+     * most resizes are triggered by keys that are ridiculously large, not by mass collision.
+     *
+     * A more proper fix might be to re-structure the whole filedict. We could keep the existing
+     * hashmap structure, but with buckets that expand dynamically. This would require each bucket
+     * to contain a "pointer" to the next bucket object if present.
+     *
+     * For now, it's easiser to just keep the hashmap duplication without the size doubling.
+     */
+    return sizeof(filedict_header_t) + initial_bucket_count * hashmap_count * sizeof(filedict_bucket_t);
 }
 
 /*
@@ -289,7 +291,6 @@ try_again:
 
         ++hashmap_i;
         hashmap += bucket_count;
-        bucket_count = (bucket_count << 1);
     }
 
     /*
@@ -409,7 +410,7 @@ static int filedict_read_advance_hashmap(filedict_read_t *read) {
 
     filedict_bucket_t *hashmap = filedict->data + offset;
 
-    read->bucket_count = (size_t)header->initial_bucket_count << read->hashmap_i;
+    read->bucket_count = (size_t)header->initial_bucket_count;
     read->bucket = &hashmap[read->key_hash % read->bucket_count];
     read->entry = &read->bucket->entries[0];
 
