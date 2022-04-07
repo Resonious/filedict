@@ -78,7 +78,6 @@ int main(int argc, const char **argv) {
             printf("hashmap %li last key:       %s\n", j+1, last_entry_key);
 
             hashmap += bucket_count;
-            bucket_count = (bucket_count << 1);
         }
     }
 
