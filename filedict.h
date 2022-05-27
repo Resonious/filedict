@@ -8,10 +8,6 @@
 #endif
 
 typedef struct filedict_bucket_entry_t {
-    /*
-     * char key[FILEDICT_KEY_SIZE];
-     * char value[FILEDICT_VALUE_SIZE];
-     */
     char bytes[FILEDICT_BUCKET_ENTRY_BYTES];
 } filedict_bucket_entry_t;
 
