@@ -65,11 +65,11 @@ int main(int argc, const char **argv) {
             for (k = 0; k < bucket_count; ++k) {
                 filedict_bucket_t *bucket = &hashmap[k];
 
-                used_buckets += (bucket->entries[0].key[0] != 0);
-                unused_buckets += (bucket->entries[0].key[0] == 0);
+                used_buckets += (bucket->entries[0].bytes[0] != 0);
+                unused_buckets += (bucket->entries[0].bytes[0] == 0);
 
-                if (bucket->entries[0].key[0] != 0) {
-                    last_entry_key = bucket->entries[0].key;
+                if (bucket->entries[0].bytes[0] != 0) {
+                    last_entry_key = bucket->entries[0].bytes;
                 }
             }
             printf("\n");

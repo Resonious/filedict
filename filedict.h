@@ -3,17 +3,16 @@
 
 #include <stddef.h>
 
-#ifndef FILEDICT_KEY_SIZE
-#define FILEDICT_KEY_SIZE 256
-#endif
-
-#ifndef FILEDICT_VALUE_SIZE
-#define FILEDICT_VALUE_SIZE 256
+#ifndef FILEDICT_BUCKET_ENTRY_BYTES
+#define FILEDICT_BUCKET_ENTRY_BYTES 512
 #endif
 
 typedef struct filedict_bucket_entry_t {
-    char key[FILEDICT_KEY_SIZE];
-    char value[FILEDICT_VALUE_SIZE];
+    /*
+     * char key[FILEDICT_KEY_SIZE];
+     * char value[FILEDICT_VALUE_SIZE];
+     */
+    char bytes[FILEDICT_BUCKET_ENTRY_BYTES];
 } filedict_bucket_entry_t;
 
 #ifndef FILEDICT_BUCKET_ENTRY_COUNT
@@ -60,6 +59,7 @@ typedef struct filedict_read_t {
 
 #ifndef FILEDICT_IMPL
 #define FILEDICT_IMPL
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <string.h>
 #include <unistd.h>
@@ -82,7 +82,7 @@ static size_t filedict_default_hash_function(const char *input) {
 
 /*
  * Writes at most max_len chars from src into dest.
- * Returns the total number of bytes in src.
+ * Returns the string length of src.
  */
 static size_t filedict_copy_string(char *dest, const char *src, size_t max_len) {
     size_t src_len = 0;
@@ -96,6 +96,21 @@ static size_t filedict_copy_string(char *dest, const char *src, size_t max_len) 
     }
 
     return src_len;
+}
+
+/*
+ * Returns the index of the trailing 0 when str1 and str2 have the same contents.
+ * Returns 0 when str1 and str2 have different contents.
+ */
+static size_t filedict_string_includes(const char *str1, const char *str2, size_t max_len) {
+    size_t i;
+
+    for (i = 0; i < max_len; ++i) {
+        if (str1[i] != str2[i]) return 0;
+        if (str1[i] == 0) return i;
+    }
+
+    return 0;
 }
 
 static void filedict_init(filedict_t *filedict) {
@@ -242,35 +257,42 @@ try_again:
             filedict_bucket_entry_t *entry = &bucket->entries[i];
 
             /* Easy case: fresh entry. We can just insert here and call it quits. */
-            if (entry->key[0] == 0) {
-                strncpy(entry->key, key, FILEDICT_KEY_SIZE);
-                size_t value_len = filedict_copy_string(entry->value, value, FILEDICT_VALUE_SIZE);
+            if (entry->bytes[0] == 0) {
+                size_t key_len = filedict_copy_string(entry->bytes, key, FILEDICT_BUCKET_ENTRY_BYTES);
+                size_t value_len = filedict_copy_string(entry->bytes + key_len + 1, value, FILEDICT_BUCKET_ENTRY_BYTES);
 
-                if (value_len > FILEDICT_VALUE_SIZE) {
+                if (key_len + value_len > FILEDICT_BUCKET_ENTRY_BYTES) {
                     filedict->error = "Value too big";
                 }
                 return;
             }
             /*
              * We need to check for room in the value, then append value.
-             * This is also where we might run into a duplicate and duck out.existing
+             * This is also where we might run into a duplicate and duck out.
              */
-            else if (strncmp(entry->key, key, FILEDICT_KEY_SIZE) == 0) {
+            else if (strncmp(entry->bytes, key, FILEDICT_BUCKET_ENTRY_BYTES) == 0) {
                 long long first_nonzero = -1;
                 char *candidate = NULL;
-                size_t value_i, candidate_len;
+                size_t bytes_i, candidate_max_len;
 
-                for (value_i = 0; value_i < FILEDICT_VALUE_SIZE - 1; ++value_i) {
+                for (bytes_i = 0; entry->bytes[bytes_i] != 0; ++bytes_i) {
+                    if (bytes_i >= FILEDICT_BUCKET_ENTRY_BYTES) {
+                        filedict->error = "Mysterious entry overflow!! Does it contain a massive key?";
+                        return;
+                    }
+                }
+
+                for (bytes_i += 1; bytes_i < FILEDICT_BUCKET_ENTRY_BYTES - 1; ++bytes_i) {
                     if (unique) {
-                        if (first_nonzero == -1 && entry->value[value_i] != 0) {
-                            first_nonzero = value_i;
+                        if (first_nonzero == -1 && entry->bytes[bytes_i] != 0) {
+                            first_nonzero = bytes_i;
                         }
 
-                        if (entry->value[value_i] == 0) {
+                        if (entry->bytes[bytes_i] == 0) {
                             int cmp = strncmp(
-                                &entry->value[first_nonzero],
+                                &entry->bytes[first_nonzero],
                                 value,
-                                FILEDICT_VALUE_SIZE - first_nonzero
+                                FILEDICT_BUCKET_ENTRY_BYTES - first_nonzero
                             );
                             if (cmp == 0) {
                                 /* Looks like this value already exists! */
@@ -280,13 +302,13 @@ try_again:
                         }
                     }
 
-                    if (entry->value[value_i] == 0 && entry->value[value_i + 1] == 0) {
-                        candidate = &entry->value[value_i + 1];
-                        candidate_len = FILEDICT_VALUE_SIZE - value_i - 1;
+                    if (entry->bytes[bytes_i] == 0 && entry->bytes[bytes_i + 1] == 0) {
+                        candidate = &entry->bytes[bytes_i + 1];
+                        candidate_max_len = FILEDICT_BUCKET_ENTRY_BYTES - bytes_i - 1;
 
-                        if (strlen(value) >= candidate_len) break;
+                        if (strlen(value) >= candidate_max_len) break;
 
-                        strncpy(candidate, value, candidate_len);
+                        strncpy(candidate, value, candidate_max_len);
                         return;
                     }
                 }
@@ -345,8 +367,8 @@ try_again:
 static int filedict_read_advance_value(filedict_read_t *read) {
     assert(read->entry != NULL);
 
-    const char *buffer_begin = read->entry->value;
-    const char *buffer_end = buffer_begin + FILEDICT_VALUE_SIZE;
+    const char *buffer_begin = read->entry->bytes;
+    const char *buffer_end = buffer_begin + FILEDICT_BUCKET_ENTRY_BYTES;
 
     const char *c;
     for (c = read->value; c < buffer_end; ++c) {
@@ -370,8 +392,8 @@ static int filedict_read_advance_value(filedict_read_t *read) {
  * Returns 0 when we exhausted all remaining entries and didn't find a match.
  */
 static int filedict_read_advance_entry(filedict_read_t *read) {
-    assert(read->key != NULL);
-    assert(strlen(read->key) > 0);
+    size_t value_start_i;
+
     assert(read->bucket != NULL);
 
     while (1) {
@@ -379,9 +401,22 @@ static int filedict_read_advance_entry(filedict_read_t *read) {
 
         read->entry = &read->bucket->entries[read->entry_i];
 
-        if (strncmp(read->entry->key, read->key, FILEDICT_KEY_SIZE) == 0) {
-            read->value = read->entry->value;
-            log_return(1);
+        if (read->key == NULL) {
+            if (read->entry->bytes[0] != 0) {
+                value_start_i = strlen(read->entry->bytes) + 1;
+                read->value = &read->entry->bytes[value_start_i];
+                log_return(1);
+            }
+        }
+        else {
+            value_start_i = filedict_string_includes(read->entry->bytes, read->key, FILEDICT_BUCKET_ENTRY_BYTES);
+
+            if (value_start_i > 0) {
+                /* add 1 because it's pointing to the 0 after key; not the first char of value */
+                value_start_i += 1;
+                read->value = &read->entry->bytes[value_start_i];
+                log_return(1);
+            }
         }
 
         read->entry_i += 1;
@@ -396,6 +431,7 @@ static int filedict_read_advance_entry(filedict_read_t *read) {
  */
 static int filedict_read_advance_hashmap(filedict_read_t *read) {
     filedict_t *filedict = read->filedict;
+    int success = 0;
 
     assert(filedict);
     assert(filedict->data);
@@ -420,6 +456,19 @@ static int filedict_read_advance_hashmap(filedict_read_t *read) {
 
     read->entry_i = 0;
 
+    if (read->key == NULL) {
+        success = filedict_read_advance_entry(read);
+        while (!success) {
+            read->key_hash += 1;
+            read->bucket = &hashmap[read->key_hash % read->bucket_count];
+            read->entry = &read->bucket->entries[0];
+            read->entry_i = 0;
+            success = filedict_read_advance_entry(read);
+            if (read->key_hash >= read->bucket_count) return 0;
+        }
+        return success;
+    }
+
     log_return(filedict_read_advance_entry(read));
 }
 
@@ -436,7 +485,14 @@ static filedict_read_t filedict_get(filedict_t *filedict, const char *key) {
     read.entry_i = 0;
     read.hashmap_i = 0;
     read.bucket_count = 0;
-    read.key_hash = filedict->hash_function(key);
+
+    /* NULL key means we want to iterate the whole entire dictionary */
+    if (key == NULL) {
+        read.key_hash = 0;
+    }
+    else {
+        read.key_hash = filedict->hash_function(key);
+    }
 
     filedict_read_advance_hashmap(&read);
     return read;
@@ -458,6 +514,19 @@ static int filedict_get_next(filedict_read_t *read) {
     read->entry_i += 1;
     found = filedict_read_advance_entry(read);
     if (found == 1) return found;
+
+    /*
+     * If read->key is NULL, that means we're iterating through the whole dict.
+     */
+    if (read->key == NULL) {
+        read->key_hash += 1;
+        if (read->key_hash < read->bucket_count) {
+            return filedict_read_advance_hashmap(read);
+        }
+        else {
+            read->key_hash = 0;
+        }
+    }
 
     read->hashmap_i += 1;
     return filedict_read_advance_hashmap(read);

@@ -22,6 +22,7 @@ int main() {
     filedict_open(&filedict2, "test.data");
     error_check2();
 
+    printf("--------- INSERTING MANY KEYS --------\n");
     filedict_insert(&filedict, "key2", "key2value1");
     filedict_insert(&filedict, "key2", "key2value2");
     filedict_insert(&filedict, "key2", "key2value3");
@@ -52,6 +53,7 @@ int main() {
     filedict_insert(&filedict, "mykey", "myvalue2");
     error_check();
 
+    printf("------------- READING \"key2\" ---------------\n");
     filedict_read_t read = filedict_get(&filedict, "key2");
     int success = 1;
 
@@ -62,7 +64,7 @@ int main() {
 
     filedict_deinit(&filedict);
 
-    printf("reading from filedict2");
+    printf("-------- reading from filedict2 \"key2\" ---------\n");
     read = filedict_get(&filedict2, "key2");
     success = 1;
 
