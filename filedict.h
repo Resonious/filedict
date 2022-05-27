@@ -1,6 +1,8 @@
 #ifndef FILEDICT_H
 #define FILEDICT_H 1
 
+#include <stddef.h>
+
 #ifndef FILEDICT_KEY_SIZE
 #define FILEDICT_KEY_SIZE 256
 #endif
