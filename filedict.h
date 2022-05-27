@@ -92,6 +92,8 @@ static size_t filedict_copy_string(char *dest, const char *src, size_t max_len) 
         if (c == 0) return src_len;
         src_len += 1;
     }
+
+    return src_len;
 }
 
 static void filedict_init(filedict_t *filedict) {
