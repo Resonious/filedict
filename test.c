@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
 
 #include "filedict.h"
 
@@ -12,6 +13,7 @@ int main() {
     filedict_t filedict, filedict2;
     filedict_init(&filedict);
     filedict_init(&filedict2);
+    int status;
     error_check();
     error_check2();
 
@@ -75,6 +77,19 @@ int main() {
 
     filedict_deinit(&filedict);
     filedict_deinit(&filedict2);
+
+    printf("-------- making test2.data to merge into test.data ---------\n");
+    filedict_init(&filedict);
+    filedict_open_new(&filedict, "test2.data");
+    filedict_insert(&filedict, "from-test2.data", "merged value 1");
+    filedict_insert(&filedict, "from-test2.data", "merged value 2");
+    filedict_insert(&filedict, "another test2 key", "another test2 value");
+    filedict_insert(&filedict, "key2", "sneaking in a value from test.2data!!");
+    filedict_deinit(&filedict);
+
+    printf("-------- running `merge test.data test2.data` ---------\n");
+    status = system("./merge test.data test2.data");
+    printf("merge exited with status code %i\n", status);
 
     printf("\nEverything went well?\n");
     return 0;

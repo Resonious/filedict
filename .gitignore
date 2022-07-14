@@ -1,4 +1,8 @@
 test
 test.data
+test2.data
 analyze
 analyze-dbg
+visualize
+merge
+merge-dbg
